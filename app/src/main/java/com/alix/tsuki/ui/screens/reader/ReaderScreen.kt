@@ -250,7 +250,7 @@ private fun PageItemView(
     isVertical: Boolean,
     onCenterTap: () -> Unit
 ) {
-    val pageFile by produceState<File?>(initialValue = null, key1 = page.index) {
+    val pageFile by produceState<File?>(initialValue = null, key1 = page.documentUri, key2 = page.index) {
         value = viewModel.getPageFile(page)
     }
 

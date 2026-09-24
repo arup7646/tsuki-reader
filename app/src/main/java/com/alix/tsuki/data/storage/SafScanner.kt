@@ -59,7 +59,7 @@ class SafScanner(
         val chaptersResult = mutableListOf<Chapter>()
 
         val rootChildren = queryChildren(treeUri, rootDocId)
-        val rootComicFiles = rootChildren.filter { !it.isDirectory && MangaFormat.fromFileName(it.displayName) != null }
+        val rootComicFiles = rootChildren.filter { !it.isDirectory && MangaFormat.fromMimeOrFileName(it.mimeType, it.displayName) != null }
         val rootDirs = rootChildren.filter { it.isDirectory }
 
         // CASE 1: The selected folder directly contains comic files (e.g. user picked "Chainsaw Man" folder)
@@ -69,7 +69,7 @@ class SafScanner(
 
             val sortedFiles = rootComicFiles.sortedWith(compareBy(naturalOrderComparator) { it.displayName })
             val chapters = sortedFiles.mapIndexed { index, file ->
-                val format = MangaFormat.fromFileName(file.displayName) ?: MangaFormat.PDF
+                val format = MangaFormat.fromMimeOrFileName(file.mimeType, file.displayName) ?: MangaFormat.PDF
                 Chapter(
                     id = file.uri.toString(),
                     mangaId = mangaId,
@@ -104,7 +104,7 @@ class SafScanner(
         // CASE 2: The selected folder contains subfolders (e.g. MangaLibrary/ containing Manga1/, Manga2/...)
         for (subDir in rootDirs) {
             val subChildren = queryChildren(treeUri, subDir.documentId)
-            val subComicFiles = subChildren.filter { !it.isDirectory && MangaFormat.fromFileName(it.displayName) != null }
+            val subComicFiles = subChildren.filter { !it.isDirectory && MangaFormat.fromMimeOrFileName(it.mimeType, it.displayName) != null }
             val subImageFiles = subChildren.filter { !it.isDirectory && isImage(it) }
             val nestedDirs = subChildren.filter { it.isDirectory }
 
@@ -115,7 +115,7 @@ class SafScanner(
                 // Subfolder contains comic files (PDF/CBZ/CBR)
                 val sortedFiles = subComicFiles.sortedWith(compareBy(naturalOrderComparator) { it.displayName })
                 val chapters = sortedFiles.mapIndexed { index, file ->
-                    val format = MangaFormat.fromFileName(file.displayName) ?: MangaFormat.PDF
+                    val format = MangaFormat.fromMimeOrFileName(file.mimeType, file.displayName) ?: MangaFormat.PDF
                     Chapter(
                         id = file.uri.toString(),
                         mangaId = mangaId,
@@ -179,13 +179,13 @@ class SafScanner(
                 // Check 1 level deeper (e.g. Author/Series/...)
                 for (nested in nestedDirs) {
                     val nestedChildren = queryChildren(treeUri, nested.documentId)
-                    val nestedComics = nestedChildren.filter { !it.isDirectory && MangaFormat.fromFileName(it.displayName) != null }
+                    val nestedComics = nestedChildren.filter { !it.isDirectory && MangaFormat.fromMimeOrFileName(it.mimeType, it.displayName) != null }
                     if (nestedComics.isNotEmpty()) {
                         val nId = nested.uri.toString()
                         val nTitle = nested.displayName
                         val sortedFiles = nestedComics.sortedWith(compareBy(naturalOrderComparator) { it.displayName })
                         val chapters = sortedFiles.mapIndexed { index, file ->
-                            val format = MangaFormat.fromFileName(file.displayName) ?: MangaFormat.PDF
+                            val format = MangaFormat.fromMimeOrFileName(file.mimeType, file.displayName) ?: MangaFormat.PDF
                             Chapter(
                                 id = file.uri.toString(),
                                 mangaId = nId,
@@ -275,18 +275,25 @@ class SafScanner(
         return list
     }
 
-    private fun getFolderDisplayName(treeUri: Uri, docId: String): String? {
+    fun getFolderDisplayName(treeUri: Uri, docId: String): String? {
         val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
         val projection = arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-        return try {
+        val nameFromCursor = try {
             contentResolver.query(docUri, projection, null, null, null)?.use { cursor ->
                 if (cursor.moveToFirst()) {
                     cursor.getString(0)
                 } else null
-            } ?: docId.substringAfterLast(':', "Comics")
-        } catch (e: Exception) {
-            docId.substringAfterLast(':', "Comics")
+            }
+        } catch (_: Exception) {
+            null
         }
+
+        if (!nameFromCursor.isNullOrBlank()) {
+            return nameFromCursor
+        }
+
+        val fallback = docId.substringAfterLast(':').substringAfterLast('/')
+        return if (fallback.isNotBlank()) fallback else "Comics"
     }
 
     val naturalOrderComparator = Comparator<String> { s1, s2 ->

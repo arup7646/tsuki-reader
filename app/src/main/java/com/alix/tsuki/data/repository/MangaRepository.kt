@@ -69,7 +69,7 @@ class MangaRepository(
             context.contentResolver.takePersistableUriPermission(treeUri, takeFlags)
 
             val rootDocId = DocumentsContract.getTreeDocumentId(treeUri)
-            val displayName = rootDocId.substringAfterLast(':', "Library Folder")
+            val displayName = safScanner.getFolderDisplayName(treeUri, rootDocId) ?: "Library Folder"
 
             folderDao.insert(
                 LibraryFolderEntity(
@@ -124,7 +124,18 @@ class MangaRepository(
                 mangaDao.insertOrUpdate(MangaEntity.fromDomain(toSave))
             }
 
-            chapterDao.insertAll(scanResult.chaptersList.map { ChapterEntity.fromDomain(it) })
+            val chaptersToSave = scanResult.chaptersList.map { chapter ->
+                val existing = chapterDao.getChapterById(chapter.id)
+                if (existing != null && existing.lastReadPage > 0) {
+                    chapter.copy(
+                        lastReadPage = existing.lastReadPage,
+                        lastReadTimestamp = existing.lastReadTimestamp
+                    )
+                } else {
+                    chapter
+                }
+            }
+            chapterDao.insertAll(chaptersToSave.map { ChapterEntity.fromDomain(it) })
 
             applicationScope.launch {
                 extractCoversForMangaList(scanResult.mangaList, scanResult.chaptersList)
@@ -197,7 +208,11 @@ class MangaRepository(
                 }
             }
             MangaFormat.FOLDER -> {
-                val parentDocId = DocumentsContract.getDocumentId(uri)
+                val parentDocId = try {
+                    DocumentsContract.getDocumentId(uri)
+                } catch (_: Exception) {
+                    DocumentsContract.getTreeDocumentId(uri)
+                }
                 val treeUri = Uri.parse(chapter.uriString)
                 val children = safScanner.queryChildren(treeUri, parentDocId)
                     .filter { !it.isDirectory && (it.mimeType.startsWith("image/") || it.displayName.lowercase().matches(Regex(".*\\.(jpg|jpeg|png|webp|bmp)$"))) }
@@ -275,7 +290,11 @@ class MangaRepository(
                     val coverFile = cacheManager.getCoverFile(manga.id)
                     if (!coverFile.exists()) {
                         val treeUri = Uri.parse(firstChapter.uriString)
-                        val docId = DocumentsContract.getDocumentId(treeUri)
+                        val docId = try {
+                            DocumentsContract.getDocumentId(treeUri)
+                        } catch (_: Exception) {
+                            DocumentsContract.getTreeDocumentId(treeUri)
+                        }
                         val imgs = safScanner.queryChildren(treeUri, docId)
                             .filter { !it.isDirectory && it.mimeType.startsWith("image/") }
                             .sortedWith(compareBy(safScanner.naturalOrderComparator) { it.displayName })

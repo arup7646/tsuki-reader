@@ -55,9 +55,11 @@ class PdfRendererManager(
             if (pageIndex < 0 || pageIndex >= renderer.pageCount) return null
 
             renderer.openPage(pageIndex).use { page ->
-                // Calculate rendering dimensions with 2x scale for sharp text/drawings, capped at 2048px
                 val baseWidth = page.width
                 val baseHeight = page.height
+                if (baseWidth <= 0 || baseHeight <= 0) return null
+
+                // Calculate rendering dimensions with 2x scale for sharp text/drawings, capped at 2048px
                 val targetWidth = (baseWidth * 2).coerceIn(720, 2048)
                 val targetHeight = (targetWidth * baseHeight) / baseWidth
 
@@ -69,12 +71,18 @@ class PdfRendererManager(
                 page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
 
                 // Cache as JPEG-90 as specified in requirements
-                FileOutputStream(targetFile).use { out ->
+                targetFile.parentFile?.mkdirs()
+                val tempFile = File(targetFile.parentFile, "${targetFile.name}.tmp")
+                FileOutputStream(tempFile).use { out ->
                     bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
                     out.flush()
                 }
                 bitmap.recycle()
-                targetFile
+                if (tempFile.renameTo(targetFile)) {
+                    targetFile
+                } else {
+                    tempFile
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -87,8 +95,9 @@ class PdfRendererManager(
     }
 
     private fun openPdfRenderer(uri: Uri): PdfRenderer? {
+        var pfd: ParcelFileDescriptor? = null
         return try {
-            val pfd: ParcelFileDescriptor? = context.contentResolver.openFileDescriptor(uri, "r")
+            pfd = context.contentResolver.openFileDescriptor(uri, "r")
             if (pfd != null) {
                 PdfRenderer(pfd)
             } else {
@@ -96,6 +105,7 @@ class PdfRendererManager(
             }
         } catch (e: Exception) {
             e.printStackTrace()
+            try { pfd?.close() } catch (_: Exception) {}
             null
         }
     }

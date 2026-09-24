@@ -20,5 +20,19 @@ enum class MangaFormat(val displayName: String, val badgeText: String) {
             val ext = name.substringAfterLast('.', "")
             return fromExtension(ext)
         }
+
+        fun fromMimeOrFileName(mimeType: String?, name: String): MangaFormat? {
+            val ext = name.substringAfterLast('.', "")
+            val fromExt = fromExtension(ext)
+            if (fromExt != null) return fromExt
+
+            val mime = mimeType?.lowercase() ?: return null
+            return when {
+                mime.contains("pdf") -> PDF
+                mime.contains("zip") || mime.contains("cbz") -> CBZ
+                mime.contains("rar") || mime.contains("cbr") || mime.contains("x-rar") -> CBR
+                else -> null
+            }
+        }
     }
 }

@@ -61,7 +61,7 @@ fun TsukiNavHost(
             }
         ) { backStackEntry ->
             val encodedMangaId = backStackEntry.arguments?.getString("mangaId") ?: ""
-            val mangaId = Uri.decode(encodedMangaId)
+            val mangaId = Screen.decodeId(encodedMangaId)
 
             val app = TsukiApp.instance
             val detailsViewModel: MangaDetailsViewModel = viewModel(
@@ -96,8 +96,8 @@ fun TsukiNavHost(
         ) { backStackEntry ->
             val encodedMangaId = backStackEntry.arguments?.getString("mangaId") ?: ""
             val encodedChapterId = backStackEntry.arguments?.getString("chapterId") ?: ""
-            val mangaId = Uri.decode(encodedMangaId)
-            val chapterId = Uri.decode(encodedChapterId)
+            val mangaId = Screen.decodeId(encodedMangaId)
+            val chapterId = Screen.decodeId(encodedChapterId)
 
             val app = TsukiApp.instance
             val readerViewModel: ReaderViewModel = viewModel(
