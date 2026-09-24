@@ -36,7 +36,7 @@ interface MangaDao {
     @Query("UPDATE manga SET coverPath = :coverPath WHERE id = :mangaId")
     suspend fun updateCover(mangaId: String, coverPath: String)
 
-    @Query("DELETE FROM manga WHERE parentFolderUri = :parentFolderUri")
+    @Query("DELETE FROM manga WHERE parentTreeUri = :parentTreeUri")
     suspend fun deleteMangaByParentFolder(parentTreeUri: String)
 
     @Query("DELETE FROM manga WHERE id = :id")

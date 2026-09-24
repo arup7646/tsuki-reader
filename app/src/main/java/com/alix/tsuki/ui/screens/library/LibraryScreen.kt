@@ -165,7 +165,7 @@ fun LibraryScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.removeFolder(manga.parentFolderUri)
+                        viewModel.removeFolder(manga.parentTreeUri)
                         mangaToDelete = null
                     }
                 ) {
