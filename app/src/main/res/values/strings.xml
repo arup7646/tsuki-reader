@@ -1,0 +1,24 @@
+<resources>
+    <string name="app_name">Tsuki Reader</string>
+    <string name="library_title">Library</string>
+    <string name="recents_title">Recents</string>
+    <string name="settings_title">Settings</string>
+    <string name="add_folder">Add Folder</string>
+    <string name="empty_library_title">Your library is empty</string>
+    <string name="empty_library_desc">Select a folder from your storage containing manga, comics, or PDFs to get started.</string>
+    <string name="empty_recents_title">No recent manga</string>
+    <string name="empty_recents_desc">Manga you start reading will appear here.</string>
+    <string name="reading_direction">Reading Direction</string>
+    <string name="reading_direction_ltr">Left to Right</string>
+    <string name="reading_direction_rtl">Right to Left (Manga)</string>
+    <string name="reading_direction_vertical">Vertical (Webtoon)</string>
+    <string name="theme">Theme</string>
+    <string name="theme_system">System Default</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="page_cache">Page Cache</string>
+    <string name="clear_cache">Clear Page Cache</string>
+    <string name="cache_size">Cache Size Limit</string>
+    <string name="about">About Tsuki Reader</string>
+    <string name="about_desc">Tsuki Reader is a fast, offline manga and comic reader powered by Jetpack Compose.</string>
+</resources>
