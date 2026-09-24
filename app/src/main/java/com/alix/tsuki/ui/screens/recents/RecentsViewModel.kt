@@ -23,7 +23,7 @@ class RecentsViewModel(
 
     fun clearRecents(mangaId: String) {
         viewModelScope.launch {
-            repository.updateReadingProgress(mangaId, 0)
+            repository.clearMangaProgress(mangaId)
         }
     }
 

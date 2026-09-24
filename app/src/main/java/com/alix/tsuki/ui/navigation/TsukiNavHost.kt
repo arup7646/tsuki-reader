@@ -104,7 +104,7 @@ fun TsukiNavHost(
                 key = "$mangaId-$chapterId",
                 factory = ReaderViewModel.Factory(
                     mangaId = mangaId,
-                    initialChapterId = chapterId,
+                    chapterId = chapterId,
                     repository = app.repository,
                     preferences = app.preferences
                 )

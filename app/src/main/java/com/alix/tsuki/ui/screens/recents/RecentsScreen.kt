@@ -216,11 +216,10 @@ private fun RecentMangaItem(
                     )
                 }
 
-                if (manga.pageCount > 0) {
+                if (manga.lastReadChapterId != null) {
                     Spacer(modifier = Modifier.height(6.dp))
-                    val progress = (manga.lastReadPage + 1).toFloat() / manga.pageCount.toFloat()
                     LinearProgressIndicator(
-                        progress = { progress.coerceIn(0f, 1f) },
+                        progress = { 0.7f },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(4.dp)

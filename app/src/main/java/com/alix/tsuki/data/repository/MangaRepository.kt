@@ -143,6 +143,10 @@ class MangaRepository(
         mangaDao.updateReadingProgress(mangaId, chapterId, chapterTitle, page, timestamp)
     }
 
+    suspend fun clearMangaProgress(mangaId: String) = withContext(Dispatchers.IO) {
+        mangaDao.clearMangaProgress(mangaId)
+    }
+
     suspend fun loadPagesForChapter(chapter: Chapter): List<ReaderPage> = withContext(Dispatchers.IO) {
         val uri = Uri.parse(chapter.uriString)
         val pages = mutableListOf<ReaderPage>()

@@ -41,4 +41,7 @@ interface MangaDao {
 
     @Query("DELETE FROM manga WHERE id = :id")
     suspend fun deleteMangaById(id: String)
+
+    @Query("UPDATE manga SET lastReadTimestamp = 0 WHERE id = :mangaId")
+    suspend fun clearMangaProgress(mangaId: String)
 }
