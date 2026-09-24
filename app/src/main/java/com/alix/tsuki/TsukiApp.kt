@@ -41,11 +41,12 @@ class TsukiApp : Application() {
         cacheManager = PageCacheManager(this)
         pdfManager = PdfRendererManager(this, cacheManager)
         archiveReader = ArchiveReader(this, cacheManager)
-        safScanner = SafScanner(this, cacheManager, pdfManager, archiveReader)
+        safScanner = SafScanner(this, cacheManager)
 
         repository = MangaRepository(
             context = this,
             mangaDao = database.mangaDao(),
+            chapterDao = database.chapterDao(),
             folderDao = database.libraryFolderDao(),
             cacheManager = cacheManager,
             safScanner = safScanner,

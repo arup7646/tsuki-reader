@@ -40,6 +40,7 @@ data class BottomNavItem(
 @Composable
 fun MainScreen(
     onMangaClick: (Manga) -> Unit,
+    onResumeChapterClick: (String, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedTab by rememberSaveable { mutableStateOf<String>(MainTab.Library.route) }
@@ -94,7 +95,14 @@ fun MainScreen(
             MainTab.Recents.route -> {
                 RecentsScreen(
                     viewModel = recentsViewModel,
-                    onMangaClick = onMangaClick,
+                    onMangaClick = { manga ->
+                        val chapterId = manga.lastReadChapterId
+                        if (chapterId != null) {
+                            onResumeChapterClick(manga.id, chapterId)
+                        } else {
+                            onMangaClick(manga)
+                        }
+                    },
                     modifier = Modifier.padding(innerPadding)
                 )
             }

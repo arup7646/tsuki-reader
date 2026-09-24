@@ -3,18 +3,18 @@ package com.alix.tsuki.data.local.entity
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.alix.tsuki.data.model.Manga
-import com.alix.tsuki.data.model.MangaFormat
 
 @Entity(tableName = "manga")
 data class MangaEntity(
     @PrimaryKey
     val id: String,
     val title: String,
-    val uriString: String,
-    val parentFolderUri: String,
-    val format: String,
+    val folderUriString: String,
+    val parentTreeUri: String,
     val coverPath: String?,
-    val pageCount: Int,
+    val chapterCount: Int,
+    val lastReadChapterId: String?,
+    val lastReadChapterTitle: String?,
     val lastReadPage: Int,
     val lastReadTimestamp: Long,
     val dateAdded: Long
@@ -23,11 +23,12 @@ data class MangaEntity(
         return Manga(
             id = id,
             title = title,
-            uriString = uriString,
-            parentFolderUri = parentFolderUri,
-            format = runCatching { MangaFormat.valueOf(format) }.getOrDefault(MangaFormat.CBZ),
+            folderUriString = folderUriString,
+            parentTreeUri = parentTreeUri,
             coverPath = coverPath,
-            pageCount = pageCount,
+            chapterCount = chapterCount,
+            lastReadChapterId = lastReadChapterId,
+            lastReadChapterTitle = lastReadChapterTitle,
             lastReadPage = lastReadPage,
             lastReadTimestamp = lastReadTimestamp,
             dateAdded = dateAdded
@@ -39,11 +40,12 @@ data class MangaEntity(
             return MangaEntity(
                 id = manga.id,
                 title = manga.title,
-                uriString = manga.uriString,
-                parentFolderUri = manga.parentFolderUri,
-                format = manga.format.name,
+                folderUriString = manga.folderUriString,
+                parentTreeUri = manga.parentTreeUri,
                 coverPath = manga.coverPath,
-                pageCount = manga.pageCount,
+                chapterCount = manga.chapterCount,
+                lastReadChapterId = manga.lastReadChapterId,
+                lastReadChapterTitle = manga.lastReadChapterTitle,
                 lastReadPage = manga.lastReadPage,
                 lastReadTimestamp = manga.lastReadTimestamp,
                 dateAdded = manga.dateAdded

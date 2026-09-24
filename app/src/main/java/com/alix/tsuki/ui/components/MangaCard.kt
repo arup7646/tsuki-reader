@@ -112,14 +112,14 @@ fun MangaCard(
                     }
                 }
 
-                // Format badge (CBZ, CBR, PDF, DIR)
+                // Format badge (Chapter count)
                 Surface(
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.88f),
                     shape = RoundedCornerShape(topStart = 0.dp, bottomEnd = 8.dp),
                     modifier = Modifier.align(Alignment.TopStart)
                 ) {
                     Text(
-                        text = manga.format.badgeText,
+                        text = "${manga.chapterCount} CH",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.Bold,
                             fontSize = 10.sp
@@ -143,10 +143,9 @@ fun MangaCard(
                 )
 
                 // Reading progress indicator
-                if (manga.pageCount > 0 && manga.lastReadPage > 0) {
-                    val progress = (manga.lastReadPage + 1).toFloat() / manga.pageCount.toFloat()
+                if (manga.lastReadChapterId != null) {
                     LinearProgressIndicator(
-                        progress = { progress.coerceIn(0f, 1f) },
+                        progress = { 0.7f },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(3.dp)
@@ -157,7 +156,7 @@ fun MangaCard(
                 }
             }
 
-            // Title and page count
+            // Title and chapter count
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -170,13 +169,13 @@ fun MangaCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (manga.pageCount > 0) {
-                    Text(
-                        text = "${manga.pageCount} pages",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Text(
+                    text = manga.lastReadChapterTitle ?: "${manga.chapterCount} chapters",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (manga.lastReadChapterTitle != null) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }

@@ -167,7 +167,7 @@ private fun RecentMangaItem(
                     modifier = Modifier.align(Alignment.TopStart)
                 ) {
                     Text(
-                        text = manga.format.badgeText,
+                        text = "${manga.chapterCount} CH",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 8.sp,
                             fontWeight = FontWeight.Bold
@@ -191,17 +191,22 @@ private fun RecentMangaItem(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                val pageProgressText = if (manga.pageCount > 0) {
-                    "Page ${manga.lastReadPage + 1} of ${manga.pageCount}"
-                } else {
-                    "Page ${manga.lastReadPage + 1}"
-                }
-
+                val subtitle = manga.lastReadChapterTitle ?: "${manga.chapterCount} chapters"
                 Text(
-                    text = pageProgressText,
+                    text = subtitle,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
+
+                if (manga.lastReadChapterTitle != null) {
+                    Text(
+                        text = "Page ${manga.lastReadPage + 1}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
 
                 if (timeAgo.isNotEmpty()) {
                     Text(

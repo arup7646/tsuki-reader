@@ -4,9 +4,16 @@ import android.net.Uri
 
 sealed class Screen(val route: String) {
     data object Main : Screen("main")
-    data object Reader : Screen("reader/{mangaId}") {
+
+    data object MangaDetails : Screen("details/{mangaId}") {
         fun createRoute(mangaId: String): String {
-            return "reader/${Uri.encode(mangaId)}"
+            return "details/${Uri.encode(mangaId)}"
+        }
+    }
+
+    data object Reader : Screen("reader/{mangaId}/{chapterId}") {
+        fun createRoute(mangaId: String, chapterId: String): String {
+            return "reader/${Uri.encode(mangaId)}/${Uri.encode(chapterId)}"
         }
     }
 }

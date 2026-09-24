@@ -53,6 +53,7 @@ fun ReaderScreen(
     modifier: Modifier = Modifier
 ) {
     val manga by viewModel.manga.collectAsState()
+    val currentChapter by viewModel.currentChapter.collectAsState()
     val pages by viewModel.pages.collectAsState()
     val currentPage by viewModel.currentPage.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -210,9 +211,15 @@ fun ReaderScreen(
         }
 
         // Top overlay bar
+        val readerTitle = when {
+            manga != null && currentChapter != null -> "${manga?.title}: ${currentChapter?.title}"
+            currentChapter != null -> currentChapter?.title ?: "Tsuki Reader"
+            else -> manga?.title ?: "Tsuki Reader"
+        }
+
         ReaderTopBar(
             visible = showControls,
-            title = manga?.title ?: "Tsuki Reader",
+            title = readerTitle,
             currentPage = currentPage,
             totalPages = pages.size,
             onBackClick = onBackClick,

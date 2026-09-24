@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.alix.tsuki.data.local.preferences.TsukiPreferences
+import com.alix.tsuki.data.model.Chapter
 import com.alix.tsuki.data.model.Manga
 import com.alix.tsuki.data.model.ReaderPage
 import com.alix.tsuki.data.model.ReadingDirection
@@ -12,20 +13,23 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 class ReaderViewModel(
-    private val mangaId: String,
+    val mangaId: String,
+    initialChapterId: String,
     private val repository: MangaRepository,
     private val preferences: TsukiPreferences
 ) : ViewModel() {
 
     private val _manga = MutableStateFlow<Manga?>(null)
     val manga: StateFlow<Manga?> = _manga.asStateFlow()
+
+    private val _currentChapter = MutableStateFlow<Chapter?>(null)
+    val currentChapter: StateFlow<Chapter?> = _currentChapter.asStateFlow()
 
     private val _pages = MutableStateFlow<List<ReaderPage>>(emptyList())
     val pages: StateFlow<List<ReaderPage>> = _pages.asStateFlow()
@@ -42,36 +46,42 @@ class ReaderViewModel(
     val readingDirection: StateFlow<ReadingDirection> = preferences.readingDirectionFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ReadingDirection.LTR)
 
-    // In-memory cache for resolved page files
     private val pageFileCache = ConcurrentHashMap<Int, File>()
 
     init {
-        loadMangaAndPages()
+        loadChapter(initialChapterId)
     }
 
-    private fun loadMangaAndPages() {
+    fun loadChapter(chapterId: String) {
         viewModelScope.launch {
             _isLoading.value = true
+            _errorMessage.value = null
+            pageFileCache.clear()
+
             try {
-                val mangaItem = repository.getMangaById(mangaId)
-                if (mangaItem == null) {
-                    _errorMessage.value = "Manga not found"
+                if (_manga.value == null) {
+                    _manga.value = repository.getMangaById(mangaId)
+                }
+
+                val chapter = repository.getChapterById(chapterId)
+                if (chapter == null) {
+                    _errorMessage.value = "Chapter not found"
                     _isLoading.value = false
                     return@launch
                 }
-                _manga.value = mangaItem
+                _currentChapter.value = chapter
 
-                val loadedPages = repository.loadPages(mangaItem)
+                val loadedPages = repository.loadPagesForChapter(chapter)
                 _pages.value = loadedPages
 
-                val initialPage = mangaItem.lastReadPage.coerceIn(0, (loadedPages.size - 1).coerceAtLeast(0))
+                val initialPage = chapter.lastReadPage.coerceIn(0, (loadedPages.size - 1).coerceAtLeast(0))
                 _currentPage.value = initialPage
 
                 // Preload nearby pages
-                preloadPage(initialPage)
-                preloadPage(initialPage + 1)
+                preloadPage(chapterId, initialPage)
+                preloadPage(chapterId, initialPage + 1)
             } catch (e: Exception) {
-                _errorMessage.value = "Error loading pages: ${e.localizedMessage}"
+                _errorMessage.value = "Error loading chapter: ${e.localizedMessage}"
             } finally {
                 _isLoading.value = false
             }
@@ -84,13 +94,15 @@ class ReaderViewModel(
         val clamped = newIndex.coerceIn(0, pageCount - 1)
         if (_currentPage.value != clamped) {
             _currentPage.value = clamped
-            viewModelScope.launch {
-                repository.updateReadingProgress(mangaId, clamped)
+            val chapter = _currentChapter.value
+            if (chapter != null) {
+                viewModelScope.launch {
+                    repository.updateReadingProgress(mangaId, chapter.id, chapter.title, clamped)
+                }
+                preloadPage(chapter.id, clamped - 1)
+                preloadPage(chapter.id, clamped + 1)
+                preloadPage(chapter.id, clamped + 2)
             }
-            // Preload next and previous
-            preloadPage(clamped - 1)
-            preloadPage(clamped + 1)
-            preloadPage(clamped + 2)
         }
     }
 
@@ -101,31 +113,37 @@ class ReaderViewModel(
     }
 
     suspend fun getPageFile(page: ReaderPage): File? {
+        val chapter = _currentChapter.value ?: return null
         pageFileCache[page.index]?.let { if (it.exists()) return it }
-        val file = repository.getPageFile(mangaId, page)
+        val file = repository.getPageFile(chapter.id, page)
         if (file != null && file.exists()) {
             pageFileCache[page.index] = file
         }
         return file
     }
 
-    private fun preloadPage(index: Int) {
+    private fun preloadPage(chapterId: String, index: Int) {
         viewModelScope.launch {
             val pagesList = _pages.value
             if (index in pagesList.indices && !pageFileCache.containsKey(index)) {
-                getPageFile(pagesList[index])
+                val page = pagesList[index]
+                val file = repository.getPageFile(chapterId, page)
+                if (file != null && file.exists()) {
+                    pageFileCache[page.index] = file
+                }
             }
         }
     }
 
     class Factory(
         private val mangaId: String,
+        private val chapterId: String,
         private val repository: MangaRepository,
         private val preferences: TsukiPreferences
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return ReaderViewModel(mangaId, repository, preferences) as T
+            return ReaderViewModel(mangaId, chapterId, repository, preferences) as T
         }
     }
 }

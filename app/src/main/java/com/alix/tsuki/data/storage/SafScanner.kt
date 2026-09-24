@@ -5,18 +5,15 @@ import android.content.Context
 import android.database.Cursor
 import android.net.Uri
 import android.provider.DocumentsContract
+import com.alix.tsuki.data.model.Chapter
 import com.alix.tsuki.data.model.Manga
 import com.alix.tsuki.data.model.MangaFormat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileOutputStream
 
 class SafScanner(
     private val context: Context,
-    private val cacheManager: PageCacheManager,
-    private val pdfManager: PdfRendererManager,
-    private val archiveReader: ArchiveReader
+    private val cacheManager: PageCacheManager
 ) {
 
     private val contentResolver: ContentResolver
@@ -34,6 +31,11 @@ class SafScanner(
             get() = mimeType == DocumentsContract.Document.MIME_TYPE_DIR
     }
 
+    data class ScanResult(
+        val mangaList: List<Manga>,
+        val chaptersList: List<Chapter>
+    )
+
     private val imageExtensions = setOf("jpg", "jpeg", "png", "webp", "bmp")
 
     private fun isImage(doc: SafDoc): Boolean {
@@ -42,109 +44,187 @@ class SafScanner(
         return ext in imageExtensions
     }
 
-    suspend fun scanTree(treeUri: Uri): List<Manga> = withContext(Dispatchers.IO) {
-        val rootDocId = DocumentsContract.getTreeDocumentId(treeUri)
-        val mangaList = mutableListOf<Manga>()
-
-        scanDirectory(treeUri, rootDocId, mangaList, depth = 0)
-        mangaList
-    }
-
-    private suspend fun scanDirectory(
-        treeUri: Uri,
-        parentDocId: String,
-        results: MutableList<Manga>,
-        depth: Int
-    ) {
-        if (depth > 4) return // Guard against excessive recursion
-
-        val children = queryChildren(treeUri, parentDocId)
-        val imageChildren = children.filter { !it.isDirectory && isImage(it) }
-        val dirChildren = children.filter { it.isDirectory }
-        val fileChildren = children.filter { !it.isDirectory }
-
-        // 1. Check if this folder itself is a loose image folder (contains images)
-        if (imageChildren.isNotEmpty()) {
-            val folderUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, parentDocId)
-            val mangaId = folderUri.toString()
-            val folderTitle = getDocumentDisplayName(treeUri, parentDocId) ?: "Untitled Comic"
-
-            // Extract cover (first image)
-            val sortedImages = imageChildren.sortedWith(compareBy(naturalOrderComparator) { it.displayName })
-            val coverPath = extractFolderCover(mangaId, sortedImages.first().uri)
-
-            results.add(
-                Manga(
-                    id = mangaId,
-                    title = folderTitle,
-                    uriString = folderUri.toString(),
-                    parentFolderUri = treeUri.toString(),
-                    format = MangaFormat.FOLDER,
-                    coverPath = coverPath,
-                    pageCount = sortedImages.size,
-                    lastReadPage = 0,
-                    lastReadTimestamp = 0L,
-                    dateAdded = System.currentTimeMillis()
-                )
-            )
-        }
-
-        // 2. Scan archive / PDF files in this folder
-        for (file in fileChildren) {
-            val format = MangaFormat.fromFileName(file.displayName) ?: continue
-            val docUri = file.uri
-            val mangaId = docUri.toString()
-            val title = file.displayName.substringBeforeLast('.')
-
-            var pageCount = 0
-            var coverPath: String? = null
-
-            try {
-                when (format) {
-                    MangaFormat.PDF -> {
-                        pageCount = pdfManager.getPageCount(docUri)
-                        coverPath = pdfManager.extractCover(mangaId, docUri)
-                    }
-                    MangaFormat.CBZ -> {
-                        val entries = archiveReader.getZipEntries(docUri)
-                        pageCount = entries.size
-                        coverPath = archiveReader.extractCbzCover(mangaId, docUri)
-                    }
-                    MangaFormat.CBR -> {
-                        val entries = archiveReader.getRarEntries(docUri)
-                        pageCount = entries.size
-                        coverPath = archiveReader.extractCbrCover(mangaId, docUri)
-                    }
-                    MangaFormat.FOLDER -> Unit
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-
-            results.add(
-                Manga(
-                    id = mangaId,
-                    title = title,
-                    uriString = docUri.toString(),
-                    parentFolderUri = treeUri.toString(),
-                    format = format,
-                    coverPath = coverPath,
-                    pageCount = pageCount,
-                    lastReadPage = 0,
-                    lastReadTimestamp = 0L,
-                    dateAdded = System.currentTimeMillis()
-                )
-            )
-        }
-
-        // 3. Scan subdirectories
-        for (subDir in dirChildren) {
-            scanDirectory(treeUri, subDir.documentId, results, depth + 1)
-        }
+    private fun isCoverImage(name: String): Boolean {
+        val lower = name.lowercase()
+        return lower.startsWith("cover") || lower.startsWith("poster") || lower.startsWith("folder")
     }
 
     /**
-     * Fast batch query via DocumentsContract cursor.
+     * Ultra-fast folder scan using batch DocumentsContract cursor queries only.
+     * Does NOT open files or decode PDFs during the scan loop.
+     */
+    suspend fun scanTree(treeUri: Uri): ScanResult = withContext(Dispatchers.IO) {
+        val rootDocId = DocumentsContract.getTreeDocumentId(treeUri)
+        val mangaResult = mutableListOf<Manga>()
+        val chaptersResult = mutableListOf<Chapter>()
+
+        val rootChildren = queryChildren(treeUri, rootDocId)
+        val rootComicFiles = rootChildren.filter { !it.isDirectory && MangaFormat.fromFileName(it.displayName) != null }
+        val rootDirs = rootChildren.filter { it.isDirectory }
+
+        // CASE 1: The selected folder directly contains comic files (e.g. user picked "Chainsaw Man" folder)
+        if (rootComicFiles.isNotEmpty()) {
+            val rootTitle = getFolderDisplayName(treeUri, rootDocId) ?: "My Comics"
+            val mangaId = treeUri.toString()
+
+            val sortedFiles = rootComicFiles.sortedWith(compareBy(naturalOrderComparator) { it.displayName })
+            val chapters = sortedFiles.mapIndexed { index, file ->
+                val format = MangaFormat.fromFileName(file.displayName) ?: MangaFormat.PDF
+                Chapter(
+                    id = file.uri.toString(),
+                    mangaId = mangaId,
+                    title = file.displayName.substringBeforeLast('.'),
+                    uriString = file.uri.toString(),
+                    format = format,
+                    orderIndex = index,
+                    pageCount = 0,
+                    lastReadPage = 0,
+                    lastReadTimestamp = 0L
+                )
+            }
+
+            mangaResult.add(
+                Manga(
+                    id = mangaId,
+                    title = rootTitle,
+                    folderUriString = treeUri.toString(),
+                    parentTreeUri = treeUri.toString(),
+                    coverPath = null,
+                    chapterCount = chapters.size,
+                    lastReadChapterId = null,
+                    lastReadChapterTitle = null,
+                    lastReadPage = 0,
+                    lastReadTimestamp = 0L,
+                    dateAdded = System.currentTimeMillis()
+                )
+            )
+            chaptersResult.addAll(chapters)
+        }
+
+        // CASE 2: The selected folder contains subfolders (e.g. MangaLibrary/ containing Manga1/, Manga2/...)
+        for (subDir in rootDirs) {
+            val subChildren = queryChildren(treeUri, subDir.documentId)
+            val subComicFiles = subChildren.filter { !it.isDirectory && MangaFormat.fromFileName(it.displayName) != null }
+            val subImageFiles = subChildren.filter { !it.isDirectory && isImage(it) }
+            val nestedDirs = subChildren.filter { it.isDirectory }
+
+            val mangaId = subDir.uri.toString()
+            val mangaTitle = subDir.displayName
+
+            if (subComicFiles.isNotEmpty()) {
+                // Subfolder contains comic files (PDF/CBZ/CBR)
+                val sortedFiles = subComicFiles.sortedWith(compareBy(naturalOrderComparator) { it.displayName })
+                val chapters = sortedFiles.mapIndexed { index, file ->
+                    val format = MangaFormat.fromFileName(file.displayName) ?: MangaFormat.PDF
+                    Chapter(
+                        id = file.uri.toString(),
+                        mangaId = mangaId,
+                        title = file.displayName.substringBeforeLast('.'),
+                        uriString = file.uri.toString(),
+                        format = format,
+                        orderIndex = index,
+                        pageCount = 0,
+                        lastReadPage = 0,
+                        lastReadTimestamp = 0L
+                    )
+                }
+
+                mangaResult.add(
+                    Manga(
+                        id = mangaId,
+                        title = mangaTitle,
+                        folderUriString = subDir.uri.toString(),
+                        parentTreeUri = treeUri.toString(),
+                        coverPath = null,
+                        chapterCount = chapters.size,
+                        lastReadChapterId = null,
+                        lastReadChapterTitle = null,
+                        lastReadPage = 0,
+                        lastReadTimestamp = 0L,
+                        dateAdded = System.currentTimeMillis()
+                    )
+                )
+                chaptersResult.addAll(chapters)
+            } else if (subImageFiles.isNotEmpty()) {
+                // Subfolder contains loose images directly -> Treated as a single-chapter Manga
+                val chapter = Chapter(
+                    id = subDir.uri.toString(),
+                    mangaId = mangaId,
+                    title = mangaTitle,
+                    uriString = subDir.uri.toString(),
+                    format = MangaFormat.FOLDER,
+                    orderIndex = 0,
+                    pageCount = subImageFiles.size,
+                    lastReadPage = 0,
+                    lastReadTimestamp = 0L
+                )
+
+                mangaResult.add(
+                    Manga(
+                        id = mangaId,
+                        title = mangaTitle,
+                        folderUriString = subDir.uri.toString(),
+                        parentTreeUri = treeUri.toString(),
+                        coverPath = null,
+                        chapterCount = 1,
+                        lastReadChapterId = null,
+                        lastReadChapterTitle = null,
+                        lastReadPage = 0,
+                        lastReadTimestamp = 0L,
+                        dateAdded = System.currentTimeMillis()
+                    )
+                )
+                chaptersResult.add(chapter)
+            } else if (nestedDirs.isNotEmpty()) {
+                // Check 1 level deeper (e.g. Author/Series/...)
+                for (nested in nestedDirs) {
+                    val nestedChildren = queryChildren(treeUri, nested.documentId)
+                    val nestedComics = nestedChildren.filter { !it.isDirectory && MangaFormat.fromFileName(it.displayName) != null }
+                    if (nestedComics.isNotEmpty()) {
+                        val nId = nested.uri.toString()
+                        val nTitle = nested.displayName
+                        val sortedFiles = nestedComics.sortedWith(compareBy(naturalOrderComparator) { it.displayName })
+                        val chapters = sortedFiles.mapIndexed { index, file ->
+                            val format = MangaFormat.fromFileName(file.displayName) ?: MangaFormat.PDF
+                            Chapter(
+                                id = file.uri.toString(),
+                                mangaId = nId,
+                                title = file.displayName.substringBeforeLast('.'),
+                                uriString = file.uri.toString(),
+                                format = format,
+                                orderIndex = index,
+                                pageCount = 0,
+                                lastReadPage = 0,
+                                lastReadTimestamp = 0L
+                            )
+                        }
+
+                        mangaResult.add(
+                            Manga(
+                                id = nId,
+                                title = nTitle,
+                                folderUriString = nested.uri.toString(),
+                                parentTreeUri = treeUri.toString(),
+                                coverPath = null,
+                                chapterCount = chapters.size,
+                                lastReadChapterId = null,
+                                lastReadChapterTitle = null,
+                                lastReadPage = 0,
+                                lastReadTimestamp = 0L,
+                                dateAdded = System.currentTimeMillis()
+                            )
+                        )
+                        chaptersResult.addAll(chapters)
+                    }
+                }
+            }
+        }
+
+        ScanResult(mangaResult, chaptersResult)
+    }
+
+    /**
+     * Batch cursor query for child documents under a tree.
      */
     fun queryChildren(treeUri: Uri, parentDocId: String): List<SafDoc> {
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
@@ -195,7 +275,7 @@ class SafScanner(
         return list
     }
 
-    private fun getDocumentDisplayName(treeUri: Uri, docId: String): String? {
+    private fun getFolderDisplayName(treeUri: Uri, docId: String): String? {
         val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
         val projection = arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
         return try {
@@ -203,30 +283,13 @@ class SafScanner(
                 if (cursor.moveToFirst()) {
                     cursor.getString(0)
                 } else null
-            }
+            } ?: docId.substringAfterLast(':', "Comics")
         } catch (e: Exception) {
-            null
+            docId.substringAfterLast(':', "Comics")
         }
     }
 
-    private fun extractFolderCover(mangaId: String, imageUri: Uri): String? {
-        val coverFile = cacheManager.getCoverFile(mangaId)
-        if (coverFile.exists() && coverFile.length() > 0) return coverFile.absolutePath
-
-        return try {
-            contentResolver.openInputStream(imageUri)?.use { input ->
-                FileOutputStream(coverFile).use { output ->
-                    input.copyTo(output)
-                }
-            }
-            coverFile.absolutePath
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
-
-    private val naturalOrderComparator = Comparator<String> { s1, s2 ->
+    val naturalOrderComparator = Comparator<String> { s1, s2 ->
         val splitRegex = Regex("(?<=\\D)(?=\\d)|(?<=\\d)(?=\\D)")
         val chunks1 = s1.split(splitRegex)
         val chunks2 = s2.split(splitRegex)
